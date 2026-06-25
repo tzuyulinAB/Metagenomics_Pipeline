@@ -340,20 +340,21 @@ process DREP {
 
     input:
     path bins
+    val use_genome_info
     path genome_info
-    path checkm_dir
 
     output:
     path 'drep', emit: drep_dir
 
     script:
+    def genomeInfoArg = use_genome_info ? "--genomeInfo ${genome_info}" : ''
     """
     dRep dereplicate drep \
       -g ${bins}/*.fa \
       -comp ${params.drep_completeness} \
       -con ${params.drep_contamination} \
       -p ${task.cpus} \
-      --genomeInfo ${genome_info} \
+      ${genomeInfoArg} \
       > dereplicate.log 2>&1
     touch drep/.done
     """
@@ -712,8 +713,13 @@ workflow {
 
     dastool_dirs = DASTOOL(dastool_inputs).dastool_dir.collect()
     das_bins = COLLECT_DASTOOL_BINS(dastool_dirs, scripts_dir).bins
-    checkm_dir = CHECKM(das_bins).checkm_dir
-    drep_dir = DREP(das_bins, file(params.genome_info), checkm_dir).drep_dir
+    def genomeInfoFile = params.genome_info ? file(params.genome_info) : file('config/genome_info.csv')
+    if (params.genome_info && !genomeInfoFile.exists()) {
+        throw new IllegalArgumentException("Configured genome_info file does not exist: ${params.genome_info}")
+    }
+    def genomeInfoRows = genomeInfoFile.readLines().findAll { it.trim() && !it.trim().startsWith('#') }
+    def useGenomeInfo = genomeInfoRows.size() > 1
+    drep_dir = DREP(das_bins, useGenomeInfo, genomeInfoFile).drep_dir
 
     if (params.run_gtdbtk) {
         classify_dir = GTDBTK_CLASSIFY(drep_dir).classify_dir

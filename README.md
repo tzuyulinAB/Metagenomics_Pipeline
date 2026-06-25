@@ -12,7 +12,7 @@ Docker-first Nextflow workflow for DNA metagenomics. This is a Nextflow port of 
 6. Filter contigs by length and prefix headers with the assembly ID.
 7. Bin contigs with MetaBAT2 and MaxBin2.
 8. Consolidate bins with DAS Tool.
-9. Collect DAS Tool bins, run CheckM, and dereplicate with dRep.
+9. Collect DAS Tool bins and dereplicate with dRep.
 10. Run GTDB-Tk classification and bacterial de novo phylogeny.
 11. Predict genes with Prodigal and annotate MAGs/assemblies with EggNOG-mapper.
 12. Build a dRep reference, map DNA reads with BBMap, then run inStrain profile and compare.
@@ -26,7 +26,7 @@ Edit these files before a production run:
 - `config/samples.tsv`: DNA paired-end libraries. Rows with `data_type` other than `DNA` are ignored.
 - `config/assemblies.tsv`: one row per assembly or co-assembly.
 - `config/pacbio_pools.tsv`: optional PacBio HiFi read pools used by assemblies.
-- `config/genome_info.csv`: dRep genome info table.
+- `config/genome_info.csv`: optional dRep genome info table. If it only contains the header, dRep runs its own genome-quality checks.
 
 The TSV schemas match the Snakemake project:
 
