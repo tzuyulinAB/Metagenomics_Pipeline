@@ -1,0 +1,48 @@
+# Manifest-driven configuration for the metagenomics Snakemake workflow.
+# Fill in the TSV files in config/ before running on real data.
+
+samples: config/samples.tsv
+assemblies: config/assemblies.tsv
+pacbio_pools: config/pacbio_pools.tsv
+
+outdir: results
+
+adapters:
+  dir: adapter_seq
+  selected: NexteraPE-PE.fa
+
+resources:
+  # Leave empty to use results/tmp.
+  tmpdir: ""
+
+databases:
+  eggnog_data_dir: resources/eggnog
+  eggnog_dmnd_db: resources/eggnog/bac_arc.dmnd
+  gtdbtk_data_path: /path/to/release220
+
+params:
+  trimmomatic: "LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
+  trimmomatic_illuminaclip: "2:30:10"
+  spades_kmers: "21,33,55,77"
+  min_contig_len: 1000
+  metabat_min_contig: 1500
+  drep_completeness: 50
+  drep_contamination: 10
+  eggnog_evalue: "1.0e-10"
+  instrain_breadth: 0.5
+
+threads:
+  fastqc: 4
+  trimmomatic: 16
+  assembly: 40
+  metabat: 20
+  maxbin: 24
+  dastool: 30
+  checkm: 40
+  drep: 40
+  gtdbtk: 30
+  prodigal: 4
+  eggnog: 32
+  bbmap: 12
+  instrain_profile: 30
+  instrain_compare: 30

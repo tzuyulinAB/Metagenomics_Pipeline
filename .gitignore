@@ -1,0 +1,13 @@
+work/
+.nextflow*
+results/
+logs/
+reports/
+resources/
+Test_files/*.fastq.gz
+Test_files/*.fq.gz
+*.log
+*.pyc
+__pycache__/
+config/validation.ok
+.DS_Store

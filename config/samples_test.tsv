@@ -1,0 +1,2 @@
+sample_id	data_type	condition	read1	read2
+CAAI	DNA	AD	Test_files/CAAI_DNA_subset_100MB_R1.fastq.gz	Test_files/CAAI_DNA_subset_100MB_R2.fastq.gz

@@ -1,0 +1,2 @@
+sample_id	data_type	condition	read1	read2
+# D0_AD	DNA	AD	/storage/path/D0_AD_R1_001.fastq.gz	/storage/path/D0_AD_R2_001.fastq.gz
