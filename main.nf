@@ -335,6 +335,7 @@ process CHECKM {
 process DREP {
     label 'drep'
     cpus { params.threads_drep as int }
+    memory { params.memory_drep }
     publishDir "${params.outdir}/mags/drep", mode: 'copy'
     publishDir 'logs/drep', mode: 'copy', pattern: '*.log'
 

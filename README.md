@@ -75,6 +75,14 @@ Run the reduced dRep/inStrain workflow without GTDB-Tk or EggNOG:
 nextflow run . -profile docker,drep_instrain
 ```
 
+For resource-constrained runs, lower dRep threads and memory:
+
+```bash
+nextflow run . -profile docker,drep_instrain \
+  --threads_drep 4 \
+  --memory_drep '16 GB'
+```
+
 A small local smoke profile is included for the copied test manifests:
 
 ```bash
