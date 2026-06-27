@@ -364,6 +364,19 @@ process DREP {
       -p ${task.cpus} \
       ${genomeInfoArg} \
       > dereplicate.log 2>&1
+
+    status=\$?
+    if [ "\$status" -ne 0 ]; then
+      exit "\$status"
+    fi
+    if grep -q '!!! checkM failed !!!' dereplicate.log; then
+      echo "dRep reported internal CheckM failure. See dereplicate.log and ${drep_out}/data/checkM/checkM_outdir/checkm.log." >&2
+      exit 1
+    fi
+    if ! ls ${drep_out}/dereplicated_genomes/*.fa >/dev/null 2>&1; then
+      echo "dRep produced no dereplicated genomes in ${drep_out}/dereplicated_genomes. Check dRep filters and logs." >&2
+      exit 1
+    fi
     touch ${drep_out}/.done
     """
 }
