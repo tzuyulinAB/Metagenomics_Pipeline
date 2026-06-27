@@ -5,7 +5,21 @@ genomes_dir="$1"
 extension="$2"
 outdir="$3"
 log="$4"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+clean_prodigal_headers() {
+  for fasta in "$@"; do
+    awk '
+      /^>/ {
+        sub(/^>/, "")
+        sub(/[[:space:]]*#.*/, "")
+        print ">" $0
+        next
+      }
+      { print }
+    ' "$fasta" > "${fasta}.tmp"
+    mv "${fasta}.tmp" "$fasta"
+  done
+}
 
 mkdir -p "$outdir"
 : > "$log"
@@ -19,6 +33,6 @@ for genome in "$genomes_dir"/*."$extension"; do
     -a "$outdir/${name}.faa" \
     -d "$outdir/${name}.fna" \
     >> "$log" 2>&1
-  python "$script_dir/clean_prodigal_headers.py" "$outdir/${name}.faa" "$outdir/${name}.fna"
+  clean_prodigal_headers "$outdir/${name}.faa" "$outdir/${name}.fna"
   cat "$outdir/${name}.fna" >> "$outdir/all_genes.fna"
 done
