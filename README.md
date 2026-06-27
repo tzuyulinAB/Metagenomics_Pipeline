@@ -83,6 +83,8 @@ nextflow run . -profile docker,drep_instrain \
   --memory_drep '16 GB'
 ```
 
+dRep output folders include the completeness and contamination thresholds, for example `results/mags/drep/drep_50_10/` by default or `results/mags/drep/drep_0_100/` when running with `--drep_completeness 0 --drep_contamination 100`.
+
 A small local smoke profile is included for the copied test manifests:
 
 ```bash

@@ -19,6 +19,12 @@ def tmpDir() {
     params.tmpdir ?: "${params.outdir}/tmp"
 }
 
+def drepDirName() {
+    "drep_${params.drep_completeness}_${params.drep_contamination}"
+        .replaceAll(/[^A-Za-z0-9]+/, '_')
+        .replaceAll(/^_|_$/, '')
+}
+
 process VALIDATE_CONFIG {
     tag 'config'
     label 'python'
@@ -343,21 +349,22 @@ process DREP {
     path bins
     val use_genome_info
     path genome_info
+    val drep_out
 
     output:
-    path 'drep', emit: drep_dir
+    path "${drep_out}", emit: drep_dir
 
     script:
     def genomeInfoArg = use_genome_info ? "--genomeInfo ${genome_info}" : ''
     """
-    dRep dereplicate drep \
+    dRep dereplicate ${drep_out} \
       -g ${bins}/*.fa \
       -comp ${params.drep_completeness} \
       -con ${params.drep_contamination} \
       -p ${task.cpus} \
       ${genomeInfoArg} \
       > dereplicate.log 2>&1
-    touch drep/.done
+    touch ${drep_out}/.done
     """
 }
 
@@ -720,7 +727,7 @@ workflow {
     }
     def genomeInfoRows = genomeInfoFile.readLines().findAll { it.trim() && !it.trim().startsWith('#') }
     def useGenomeInfo = genomeInfoRows.size() > 1
-    drep_dir = DREP(das_bins, useGenomeInfo, genomeInfoFile).drep_dir
+    drep_dir = DREP(das_bins, useGenomeInfo, genomeInfoFile, drepDirName()).drep_dir
 
     if (params.run_gtdbtk) {
         classify_dir = GTDBTK_CLASSIFY(drep_dir).classify_dir
