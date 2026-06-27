@@ -33,6 +33,6 @@ for genome in "$genomes_dir"/*."$extension"; do
     -a "$outdir/${name}.faa" \
     -d "$outdir/${name}.fna" \
     >> "$log" 2>&1
-  clean_prodigal_headers "$outdir/${name}.faa" "$outdir/${name}.fna"
+  clean_prodigal_headers "$outdir/${name}.faa"
   cat "$outdir/${name}.fna" >> "$outdir/all_genes.fna"
 done
