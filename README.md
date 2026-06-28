@@ -1,6 +1,6 @@
 # Metagenomics Pipeline
 
-Docker-first Nextflow workflow for DNA metagenomics.
+Docker-first Nextflow workflow for metagenomics.
 
 ## Workflow
 
@@ -119,7 +119,6 @@ The smoke profile writes outside the iCloud path by default because SPAdes can b
 
 ## Notes
 
-- MaxBin2 receives the first sample listed for each assembly, matching the Snakemake implementation.
 - EggNOG database generation is wired in when `params.eggnog_dmnd_db` does not exist. For production, prebuilding and pointing `--eggnog_dmnd_db` at the database is usually faster and more reproducible.
 - GTDB-Tk still needs a local database path via `--gtdbtk_data_path`.
 - The default Docker image tags are app-level starting points. If your platform or registry mirror prefers different tags, adjust the `withLabel` container entries in `nextflow.config`.
