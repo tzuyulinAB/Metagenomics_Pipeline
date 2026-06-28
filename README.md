@@ -83,6 +83,19 @@ nextflow run . -profile docker,drep_instrain \
   --memory_drep '16 GB'
 ```
 
+Use `--stop_after` with `drep_instrain` to run only part of the workflow and continue later with `-resume`:
+
+| `--stop_after` value | Runs through |
+| --- | --- |
+| `NONE` | Entire workflow |
+| `FASTQC_DNA_TRIMMED` | Trim and QC only |
+| `HYBRIDSPADES` | Assembly |
+| `MAXBIN` | Binning |
+| `DASTOOL` | MAG aggregation |
+| `DREP` | MAG dereplication |
+| `PRODIGAL_MAG` | MAG gene prediction / annotation prep |
+| `INSTRAIN_COMPARE` | Entire inStrain workflow |
+
 dRep output folders include the completeness and contamination thresholds, for example `results/mags/drep/drep_50_10/` by default or `results/mags/drep/drep_0_100/` when running with `--drep_completeness 0 --drep_contamination 100`.
 
 Run GTDB-Tk by itself on existing MAG bins:

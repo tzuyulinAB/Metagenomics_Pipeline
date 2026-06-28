@@ -57,6 +57,31 @@ def selectedEggnogAssemblyContigsDir() {
     params.eggnog_assembly_contigs_dir ?: "${params.outdir}/assembly"
 }
 
+def stopAfterStep() {
+    (params.stop_after ?: 'NONE').toString().toUpperCase()
+}
+
+def validateStopAfter() {
+    def allowed = [
+        'NONE',
+        'FASTQC_DNA_TRIMMED',
+        'HYBRIDSPADES',
+        'MAXBIN',
+        'DASTOOL',
+        'DREP',
+        'PRODIGAL_MAG',
+        'INSTRAIN_COMPARE'
+    ]
+    def selected = stopAfterStep()
+    if (!allowed.contains(selected)) {
+        throw new IllegalArgumentException("Unsupported stop_after '${params.stop_after}'. Use one of: ${allowed.join(', ')}.")
+    }
+}
+
+def shouldStopAfter(String step) {
+    stopAfterStep() == step
+}
+
 process VALIDATE_CONFIG {
     tag 'config'
     label 'python'
@@ -829,6 +854,7 @@ workflow {
         throw new IllegalArgumentException("Unsupported eggnog_input '${params.eggnog_input}'. Use mag_prodigal or assembly_prodigal.")
     }
     } else {
+    validateStopAfter()
     validate = VALIDATE_CONFIG(file(params.samples), file(params.assemblies), file(params.pacbio_pools), scripts_dir)
     CHECK_DEPENDENCIES(scripts_dir)
     adapter = file("${params.adapter_dir}/${params.adapter}").exists()
@@ -842,6 +868,7 @@ workflow {
     trimmed = TRIM_DNA(dna_reads, adapter).trimmed
     FASTQC_DNA_TRIMMED(trimmed)
 
+    if (!shouldStopAfter('FASTQC_DNA_TRIMMED')) {
     trimmed_for_assembly = trimmed.collect(flat: false).map { trimList -> [trimList: trimList] }
     assembly_requests = Channel.fromList(assemblyMeta)
         .combine(trimmed_for_assembly)
@@ -857,73 +884,84 @@ workflow {
         }
 
     spades_contigs = HYBRIDSPADES(assembly_requests).contigs
-    filtered_contigs = FILTER_CONTIGS(spades_contigs, scripts_dir).filtered
+    if (!shouldStopAfter('HYBRIDSPADES')) {
+        filtered_contigs = FILTER_CONTIGS(spades_contigs, scripts_dir).filtered
 
-    if (!params.local_smoke) {
-    metabat_bins = METABAT(filtered_contigs).bins.map { id, dir -> tuple(id, dir, 'metabat') }
+        if (!params.local_smoke) {
+        metabat_bins = METABAT(filtered_contigs).bins.map { id, dir -> tuple(id, dir, 'metabat') }
 
-    trimmed_for_maxbin = trimmed.collect(flat: false).map { trimList -> [trimList: trimList] }
-    maxbin_inputs = filtered_contigs.combine(trimmed_for_maxbin).map { id, contigs, trimBundle ->
-        def trimList = trimBundle.trimList
-        if (trimList && !(trimList[0] instanceof List)) {
-            trimList = [trimList]
+        trimmed_for_maxbin = trimmed.collect(flat: false).map { trimList -> [trimList: trimList] }
+        maxbin_inputs = filtered_contigs.combine(trimmed_for_maxbin).map { id, contigs, trimBundle ->
+            def trimList = trimBundle.trimList
+            if (trimList && !(trimList[0] instanceof List)) {
+                trimList = [trimList]
+            }
+            def meta = assemblyMeta.find { it.assembly_id == id }
+            def firstSample = meta.samples[0]
+            def trim = trimList.find { it[0] == firstSample }
+            tuple(id, contigs, trim[1], trim[2])
         }
-        def meta = assemblyMeta.find { it.assembly_id == id }
-        def firstSample = meta.samples[0]
-        def trim = trimList.find { it[0] == firstSample }
-        tuple(id, contigs, trim[1], trim[2])
-    }
-    maxbin_bins = MAXBIN(maxbin_inputs).bins.map { id, dir -> tuple(id, dir, 'maxbin') }
+        maxbin_bins = MAXBIN(maxbin_inputs).bins.map { id, dir -> tuple(id, dir, 'maxbin') }
 
-    scaffolds_tables = SCAFFOLDS2BIN(metabat_bins.mix(maxbin_bins), scripts_dir).table
-    scaffolds_tables_for_dastool = scaffolds_tables.collect(flat: false).map { tables -> [tables: tables] }
-    dastool_inputs = filtered_contigs.combine(scaffolds_tables_for_dastool).map { id, contigs, tableBundle ->
-        def tables = tableBundle.tables
-        if (tables && !(tables[0] instanceof List)) {
-            tables = [tables]
+        if (!shouldStopAfter('MAXBIN')) {
+        scaffolds_tables = SCAFFOLDS2BIN(metabat_bins.mix(maxbin_bins), scripts_dir).table
+        scaffolds_tables_for_dastool = scaffolds_tables.collect(flat: false).map { tables -> [tables: tables] }
+        dastool_inputs = filtered_contigs.combine(scaffolds_tables_for_dastool).map { id, contigs, tableBundle ->
+            def tables = tableBundle.tables
+            if (tables && !(tables[0] instanceof List)) {
+                tables = [tables]
+            }
+            def metabat = tables.find { it[0] == id && it[1] == 'metabat' }
+            def maxbin = tables.find { it[0] == id && it[1] == 'maxbin' }
+            if (!metabat || !maxbin) {
+                throw new IllegalStateException("Missing scaffold table for ${id}: metabat=${!!metabat}, maxbin=${!!maxbin}")
+            }
+            tuple(id, contigs, maxbin[2], metabat[2])
         }
-        def metabat = tables.find { it[0] == id && it[1] == 'metabat' }
-        def maxbin = tables.find { it[0] == id && it[1] == 'maxbin' }
-        if (!metabat || !maxbin) {
-            throw new IllegalStateException("Missing scaffold table for ${id}: metabat=${!!metabat}, maxbin=${!!maxbin}")
+
+        dastool_dirs = DASTOOL(dastool_inputs).dastool_dir.collect()
+        if (!shouldStopAfter('DASTOOL')) {
+        das_bins = COLLECT_DASTOOL_BINS(dastool_dirs, scripts_dir).bins
+        def genomeInfoFile = params.genome_info ? file(params.genome_info) : file('config/genome_info.csv')
+        if (params.genome_info && !genomeInfoFile.exists()) {
+            throw new IllegalArgumentException("Configured genome_info file does not exist: ${params.genome_info}")
         }
-        tuple(id, contigs, maxbin[2], metabat[2])
-    }
+        def genomeInfoRows = genomeInfoFile.readLines().findAll { it.trim() && !it.trim().startsWith('#') }
+        def useGenomeInfo = genomeInfoRows.size() > 1
+        drep_dir = DREP(das_bins, useGenomeInfo, genomeInfoFile, drepDirName()).drep_dir
 
-    dastool_dirs = DASTOOL(dastool_inputs).dastool_dir.collect()
-    das_bins = COLLECT_DASTOOL_BINS(dastool_dirs, scripts_dir).bins
-    def genomeInfoFile = params.genome_info ? file(params.genome_info) : file('config/genome_info.csv')
-    if (params.genome_info && !genomeInfoFile.exists()) {
-        throw new IllegalArgumentException("Configured genome_info file does not exist: ${params.genome_info}")
-    }
-    def genomeInfoRows = genomeInfoFile.readLines().findAll { it.trim() && !it.trim().startsWith('#') }
-    def useGenomeInfo = genomeInfoRows.size() > 1
-    drep_dir = DREP(das_bins, useGenomeInfo, genomeInfoFile, drepDirName()).drep_dir
-
-    if (params.run_gtdbtk) {
-        classify_dir = GTDBTK_CLASSIFY(drep_dir).classify_dir
-        GTDBTK_DE_NOVO(drep_dir, classify_dir)
-    }
-
-    mag_prodigal = PRODIGAL_MAG(drep_dir, scripts_dir).mag_prodigal_dir
-    if (params.run_eggnog) {
-        assembly_genes = PRODIGAL_ASSEMBLY(filtered_contigs, scripts_dir).genes
-        def eggnog_db
-        if (params.eggnog_data_dir && file(params.eggnog_data_dir).exists() && params.eggnog_dmnd_db && file(params.eggnog_dmnd_db).exists()) {
-            eggnog_db = Channel.value(tuple(file(params.eggnog_data_dir), file(params.eggnog_dmnd_db)))
-        } else {
-            eggnog_db = EGGNOG_DATABASE().db
+        if (!shouldStopAfter('DREP')) {
+        if (params.run_gtdbtk) {
+            classify_dir = GTDBTK_CLASSIFY(drep_dir).classify_dir
+            GTDBTK_DE_NOVO(drep_dir, classify_dir)
         }
-        EGGNOG_ASSEMBLY(assembly_genes, eggnog_db)
-        EGGNOG_MAG(mag_prodigal, eggnog_db, scripts_dir)
-    }
 
-    ref = CONCATENATE_DREP_REFERENCE(drep_dir).fasta
-    stb = MAKE_STB(drep_dir, scripts_dir).stb
-    bams = BBMAP_DNA_FOR_INSTRAIN(trimmed, ref).bam
-    profiles = INSTRAIN_PROFILE(bams, ref, stb, mag_prodigal).profile_dir.collect(flat: false)
-    compare_profiles = profiles.filter { profileDirs -> profileDirs.size() > 1 }
-    INSTRAIN_COMPARE(compare_profiles, stb)
+        mag_prodigal = PRODIGAL_MAG(drep_dir, scripts_dir).mag_prodigal_dir
+        if (!shouldStopAfter('PRODIGAL_MAG')) {
+        if (params.run_eggnog) {
+            assembly_genes = PRODIGAL_ASSEMBLY(filtered_contigs, scripts_dir).genes
+            def eggnog_db
+            if (params.eggnog_data_dir && file(params.eggnog_data_dir).exists() && params.eggnog_dmnd_db && file(params.eggnog_dmnd_db).exists()) {
+                eggnog_db = Channel.value(tuple(file(params.eggnog_data_dir), file(params.eggnog_dmnd_db)))
+            } else {
+                eggnog_db = EGGNOG_DATABASE().db
+            }
+            EGGNOG_ASSEMBLY(assembly_genes, eggnog_db)
+            EGGNOG_MAG(mag_prodigal, eggnog_db, scripts_dir)
+        }
+
+        ref = CONCATENATE_DREP_REFERENCE(drep_dir).fasta
+        stb = MAKE_STB(drep_dir, scripts_dir).stb
+        bams = BBMAP_DNA_FOR_INSTRAIN(trimmed, ref).bam
+        profiles = INSTRAIN_PROFILE(bams, ref, stb, mag_prodigal).profile_dir.collect(flat: false)
+        compare_profiles = profiles.filter { profileDirs -> profileDirs.size() > 1 }
+        INSTRAIN_COMPARE(compare_profiles, stb)
+        }
+        }
+        }
+        }
+        }
+        }
     }
     }
 }
