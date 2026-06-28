@@ -83,7 +83,7 @@ nextflow run . -profile docker,drep_instrain \
   --memory_drep '16 GB'
 ```
 
-Use `--stop_after` with `drep_instrain` to run only part of the workflow and continue later with `-resume`:
+Use `--stop_after` with `drep_instrain` to run only part of the workflow:
 
 | `--stop_after` value | Runs through |
 | --- | --- |
@@ -94,7 +94,8 @@ Use `--stop_after` with `drep_instrain` to run only part of the workflow and con
 | `DASTOOL` | MAG aggregation |
 | `DREP` | MAG dereplication |
 | `PRODIGAL_MAG` | MAG gene prediction / annotation prep |
-| `INSTRAIN_COMPARE` | Entire inStrain workflow |
+
+To continue later and complete the full workflow from cached results, rerun with `--stop_after NONE -resume`.
 
 dRep output folders include the completeness and contamination thresholds, for example `results/mags/drep/drep_50_10/` by default or `results/mags/drep/drep_0_100/` when running with `--drep_completeness 0 --drep_contamination 100`.
 

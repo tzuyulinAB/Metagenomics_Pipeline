@@ -69,8 +69,7 @@ def validateStopAfter() {
         'MAXBIN',
         'DASTOOL',
         'DREP',
-        'PRODIGAL_MAG',
-        'INSTRAIN_COMPARE'
+        'PRODIGAL_MAG'
     ]
     def selected = stopAfterStep()
     if (!allowed.contains(selected)) {
