@@ -25,6 +25,38 @@ def drepDirName() {
         .replaceAll(/^_|_$/, '')
 }
 
+def selectedDrepDirName() {
+    params.gtdbtk_drep_dir ?: drepDirName()
+}
+
+def selectedGtdbtkBinsDir() {
+    if (params.gtdbtk_bins_dir) {
+        return params.gtdbtk_bins_dir
+    }
+    def source = (params.gtdbtk_bins ?: 'drep').toString().toLowerCase()
+    if (source == 'metabat') {
+        return "${params.outdir}/mags/metabat"
+    }
+    if (source == 'maxbin') {
+        return "${params.outdir}/mags/maxbin"
+    }
+    if (source == 'dastool') {
+        return "${params.outdir}/mags/das_bins"
+    }
+    if (source == 'drep') {
+        return "${params.outdir}/mags/drep/${selectedDrepDirName()}/dereplicated_genomes"
+    }
+    throw new IllegalArgumentException("Unsupported gtdbtk_bins '${params.gtdbtk_bins}'. Use metabat, maxbin, dastool, or drep.")
+}
+
+def selectedEggnogMagProdigalDir() {
+    params.eggnog_mag_prodigal_dir ?: "${params.outdir}/annotation/mag_prodigal"
+}
+
+def selectedEggnogAssemblyContigsDir() {
+    params.eggnog_assembly_contigs_dir ?: "${params.outdir}/assembly"
+}
+
 process VALIDATE_CONFIG {
     tag 'config'
     label 'python'
@@ -381,6 +413,35 @@ process DREP {
     """
 }
 
+process STAGE_GTDBTK_BINS {
+    tag source_label
+    label 'python'
+    publishDir "${params.outdir}/taxonomy/gtdbtk_input_bins", mode: 'copy'
+    publishDir 'logs/gtdbtk', mode: 'copy', pattern: '*.log'
+
+    input:
+    tuple val(source_label), path(bins_dir)
+
+    output:
+    tuple val(source_label), path('gtdbtk_genomes'), emit: bins
+
+    script:
+    """
+    mkdir -p gtdbtk_genomes
+    find ${bins_dir} -type f \\( -name '*.fa' -o -name '*.fasta' -o -name '*.fna' \\) -print | sort | while IFS= read -r genome; do
+      base=\$(basename "\$genome")
+      stem="\${base%.*}"
+      cp "\$genome" "gtdbtk_genomes/\${stem}.fa"
+    done
+    count=\$(find gtdbtk_genomes -type f -name '*.fa' | wc -l | tr -d ' ')
+    if [ "\$count" -eq 0 ]; then
+      echo "No FASTA bins found in ${bins_dir}" >&2
+      exit 1
+    fi
+    echo "staged \$count genome FASTA files from ${bins_dir}" > stage_gtdbtk_bins.log
+    """
+}
+
 process GTDBTK_CLASSIFY {
     label 'gtdbtk'
     cpus { params.threads_gtdbtk as int }
@@ -435,6 +496,61 @@ process GTDBTK_DE_NOVO {
     """
 }
 
+process GTDBTK_CLASSIFY_BINS {
+    tag source_label
+    label 'gtdbtk'
+    cpus { params.threads_gtdbtk as int }
+    publishDir "${params.outdir}/taxonomy", mode: 'copy'
+    publishDir 'logs/gtdbtk', mode: 'copy', pattern: '*.log'
+
+    input:
+    tuple val(source_label), path(genome_dir)
+
+    output:
+    tuple val(source_label), path("gtdbtk_classify_${source_label}"), emit: classify
+
+    script:
+    """
+    export GTDBTK_DATA_PATH=${params.gtdbtk_data_path}
+    gtdbtk classify_wf \
+      --genome_dir ${genome_dir} \
+      --extension fa \
+      --out_dir gtdbtk_classify_${source_label} \
+      --cpus ${task.cpus} \
+      --mash_db gtdbtk_classify_${source_label}/mash_db \
+      > classify.${source_label}.log 2>&1
+    touch gtdbtk_classify_${source_label}/.done
+    """
+}
+
+process GTDBTK_DE_NOVO_BINS {
+    tag source_label
+    label 'gtdbtk'
+    cpus { params.threads_gtdbtk as int }
+    publishDir "${params.outdir}/taxonomy", mode: 'copy'
+    publishDir 'logs/gtdbtk', mode: 'copy', pattern: '*.log'
+
+    input:
+    tuple val(source_label), path(classify_dir), path(genome_dir)
+
+    output:
+    path "gtdbtk_de_novo_bac_${source_label}"
+
+    script:
+    """
+    export GTDBTK_DATA_PATH=${params.gtdbtk_data_path}
+    gtdbtk de_novo_wf \
+      --genome_dir ${genome_dir} \
+      --extension fa \
+      --outgroup_taxon p__Thermotogota --bacteria \
+      --out_dir gtdbtk_de_novo_bac_${source_label} \
+      --cpus ${task.cpus} \
+      --gtdbtk_classification_file ${classify_dir}/classify/gtdbtk.bac120.summary.tsv \
+      > de_novo_bac.${source_label}.log 2>&1
+    touch gtdbtk_de_novo_bac_${source_label}/.done
+    """
+}
+
 process PRODIGAL_MAG {
     label 'prodigal'
     cpus { params.threads_prodigal as int }
@@ -472,7 +588,18 @@ process PRODIGAL_ASSEMBLY {
     """
     prodigal -p meta -i ${contigs} -a ${assembly_id}.faa -d ${assembly_id}.fna \
       > ${assembly_id}.log 2>&1
-    python "${scripts_dir}/clean_prodigal_headers.py" ${assembly_id}.faa ${assembly_id}.fna
+    for fasta in ${assembly_id}.faa ${assembly_id}.fna; do
+      awk '
+        /^>/ {
+          sub(/^>/, "")
+          sub(/[[:space:]]*#.*/, "")
+          print ">" \$0
+          next
+        }
+        { print }
+      ' "\$fasta" > "\${fasta}.tmp"
+      mv "\${fasta}.tmp" "\$fasta"
+    done
     """
 }
 
@@ -671,6 +798,37 @@ workflow {
         [assembly_id: row.assembly_id, samples: samples, pacbio: pacbio]
     }
 
+    if (params.workflow_mode == 'gtdbtk_only') {
+    def gtdbtkSource = (params.gtdbtk_bins ?: 'drep').toString().toLowerCase()
+    def gtdbtkLabel = gtdbtkSource == 'drep' ? selectedDrepDirName() : gtdbtkSource
+    staged_gtdbtk_bins = STAGE_GTDBTK_BINS(Channel.value(tuple(gtdbtkLabel, file(selectedGtdbtkBinsDir())))).bins
+    classified_bins = GTDBTK_CLASSIFY_BINS(staged_gtdbtk_bins).classify
+    de_novo_inputs = classified_bins
+        .combine(staged_gtdbtk_bins)
+        .filter { label1, classify_dir, label2, genome_dir -> label1 == label2 }
+        .map { label1, classify_dir, label2, genome_dir -> tuple(label1, classify_dir, genome_dir) }
+    GTDBTK_DE_NOVO_BINS(de_novo_inputs)
+    } else if (params.workflow_mode == 'eggnog_only') {
+    def eggnog_db
+    if (params.eggnog_data_dir && file(params.eggnog_data_dir).exists() && params.eggnog_dmnd_db && file(params.eggnog_dmnd_db).exists()) {
+        eggnog_db = Channel.value(tuple(file(params.eggnog_data_dir), file(params.eggnog_dmnd_db)))
+    } else {
+        eggnog_db = EGGNOG_DATABASE().db
+    }
+
+    def eggnogInput = (params.eggnog_input ?: 'mag_prodigal').toString().toLowerCase()
+    if (eggnogInput == 'mag_prodigal') {
+        EGGNOG_MAG(Channel.value(file(selectedEggnogMagProdigalDir())), eggnog_db, scripts_dir)
+    } else if (eggnogInput == 'assembly_prodigal') {
+        assembly_contigs = Channel.fromList(assemblies).map { row ->
+            tuple(row.assembly_id, file("${selectedEggnogAssemblyContigsDir()}/${row.assembly_id}/contigs_1000_hdmod.fasta"))
+        }
+        assembly_genes = PRODIGAL_ASSEMBLY(assembly_contigs, scripts_dir).genes
+        EGGNOG_ASSEMBLY(assembly_genes, eggnog_db)
+    } else {
+        throw new IllegalArgumentException("Unsupported eggnog_input '${params.eggnog_input}'. Use mag_prodigal or assembly_prodigal.")
+    }
+    } else {
     validate = VALIDATE_CONFIG(file(params.samples), file(params.assemblies), file(params.pacbio_pools), scripts_dir)
     CHECK_DEPENDENCIES(scripts_dir)
     adapter = file("${params.adapter_dir}/${params.adapter}").exists()
@@ -766,5 +924,6 @@ workflow {
     profiles = INSTRAIN_PROFILE(bams, ref, stb, mag_prodigal).profile_dir.collect(flat: false)
     compare_profiles = profiles.filter { profileDirs -> profileDirs.size() > 1 }
     INSTRAIN_COMPARE(compare_profiles, stb)
+    }
     }
 }

@@ -85,6 +85,30 @@ nextflow run . -profile docker,drep_instrain \
 
 dRep output folders include the completeness and contamination thresholds, for example `results/mags/drep/drep_50_10/` by default or `results/mags/drep/drep_0_100/` when running with `--drep_completeness 0 --drep_contamination 100`.
 
+Run GTDB-Tk by itself on existing MAG bins:
+
+```bash
+nextflow run . -profile docker,gtdbtk_only \
+  --gtdbtk_data_path /path/to/release220 \
+  --gtdbtk_bins drep
+```
+
+`--gtdbtk_bins` can be `drep`, `dastool`, `metabat`, or `maxbin`. For dRep bins, the default folder follows the dRep thresholds, such as `results/mags/drep/drep_50_10/dereplicated_genomes/`; use `--drep_completeness 0 --drep_contamination 100` for `drep_0_100`, or override directly with `--gtdbtk_bins_dir /path/to/bins`.
+
+Run EggNOG-mapper by itself on existing MAG Prodigal output:
+
+```bash
+nextflow run . -profile docker,eggnog_only \
+  --eggnog_input mag_prodigal
+```
+
+To annotate assemblies instead, the profile first runs Prodigal on filtered assembly contigs from `results/assembly` and writes them under `results/annotation/assembly_prodigal`:
+
+```bash
+nextflow run . -profile docker,eggnog_only \
+  --eggnog_input assembly_prodigal
+```
+
 A small local smoke profile is included for the copied test manifests:
 
 ```bash
