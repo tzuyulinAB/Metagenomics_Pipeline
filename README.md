@@ -1,6 +1,6 @@
 # Metagenomics Pipeline
 
-Docker-first Nextflow workflow for DNA metagenomics. This is a Nextflow port of the sibling Snakemake workflow. RNA/metatranscriptomics steps are intentionally left out for now.
+Docker-first Nextflow workflow for DNA metagenomics.
 
 ## Workflow
 
