@@ -763,7 +763,8 @@ workflow {
     ref = CONCATENATE_DREP_REFERENCE(drep_dir).fasta
     stb = MAKE_STB(drep_dir, scripts_dir).stb
     bams = BBMAP_DNA_FOR_INSTRAIN(trimmed, ref).bam
-    profiles = INSTRAIN_PROFILE(bams, ref, stb, mag_prodigal).profile_dir.collect()
-    INSTRAIN_COMPARE(profiles, stb)
+    profiles = INSTRAIN_PROFILE(bams, ref, stb, mag_prodigal).profile_dir.collect(flat: false)
+    compare_profiles = profiles.filter { profileDirs -> profileDirs.size() > 1 }
+    INSTRAIN_COMPARE(compare_profiles, stb)
     }
 }
