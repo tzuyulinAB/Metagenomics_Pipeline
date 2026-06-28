@@ -438,7 +438,7 @@ process GTDBTK_DE_NOVO {
 process PRODIGAL_MAG {
     label 'prodigal'
     cpus { params.threads_prodigal as int }
-    publishDir "${params.outdir}/annotation/mag_prodigal", mode: 'copy'
+    publishDir "${params.outdir}/annotation", mode: 'copy'
     publishDir 'logs/prodigal', mode: 'copy', pattern: '*.log'
 
     input:
